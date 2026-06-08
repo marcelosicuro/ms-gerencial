@@ -11,3 +11,7 @@ export type Conta = {
 };
 
 export type ContaComNivel = Conta & { nivel: number };
+
+export type ContaNode = Conta & {
+  filhos: ContaNode[];
+};

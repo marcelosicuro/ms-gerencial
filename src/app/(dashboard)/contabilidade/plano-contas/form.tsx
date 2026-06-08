@@ -16,6 +16,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { FolderOpen } from "lucide-react";
 import { toast } from "sonner";
 
 const schema = z.object({
@@ -46,10 +47,11 @@ type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   conta?: Conta | null;
+  paiInicial?: Conta | null;
   contasPai: { id: number; codigo: string; nome: string }[];
 };
 
-export function PlanoContasForm({ open, onOpenChange, conta, contasPai }: Props) {
+export function PlanoContasForm({ open, onOpenChange, conta, paiInicial, contasPai }: Props) {
   const [pending, startTransition] = useTransition();
 
   const { register, handleSubmit, reset, control, formState: { errors } } = useForm<FormValues>({
@@ -64,11 +66,32 @@ export function PlanoContasForm({ open, onOpenChange, conta, contasPai }: Props)
   });
 
   useEffect(() => {
-    reset(conta
-      ? { codigo: conta.codigo, nome: conta.nome, tipo: conta.tipo, natureza: conta.natureza, paiId: conta.paiId }
-      : { codigo: "", nome: "", tipo: TipoConta.ANALITICA, natureza: NaturezaConta.ATIVO, paiId: null }
-    );
-  }, [conta, open, reset]);
+    if (conta) {
+      reset({
+        codigo:   conta.codigo,
+        nome:     conta.nome,
+        tipo:     conta.tipo,
+        natureza: conta.natureza,
+        paiId:    conta.paiId,
+      });
+    } else if (paiInicial) {
+      reset({
+        codigo:   "",
+        nome:     "",
+        tipo:     TipoConta.ANALITICA,
+        natureza: paiInicial.natureza,
+        paiId:    paiInicial.id,
+      });
+    } else {
+      reset({
+        codigo:   "",
+        nome:     "",
+        tipo:     TipoConta.ANALITICA,
+        natureza: NaturezaConta.ATIVO,
+        paiId:    null,
+      });
+    }
+  }, [conta, paiInicial, open, reset]);
 
   function onSubmit(values: FormValues) {
     startTransition(async () => {
@@ -85,11 +108,17 @@ export function PlanoContasForm({ open, onOpenChange, conta, contasPai }: Props)
     });
   }
 
+  const titulo = conta
+    ? "Editar conta"
+    : paiInicial
+    ? `Nova conta em ${paiInicial.codigo} — ${paiInicial.nome}`
+    : "Nova conta raiz";
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-md overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>{conta ? "Editar conta" : "Nova conta"}</SheetTitle>
+          <SheetTitle>{titulo}</SheetTitle>
         </SheetHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 py-6">
@@ -143,28 +172,37 @@ export function PlanoContasForm({ open, onOpenChange, conta, contasPai }: Props)
             />
           </div>
 
+          {/* Conta pai: bloqueada quando criando filha, editável nos demais casos */}
           <div className="space-y-1.5">
             <Label>Conta pai <span className="text-muted-foreground text-xs">(opcional)</span></Label>
-            <Controller
-              name="paiId"
-              control={control}
-              render={({ field }) => (
-                <Select
-                  onValueChange={(v) => field.onChange(v === "none" ? null : Number(v))}
-                  value={field.value != null ? String(field.value) : "none"}
-                >
-                  <SelectTrigger><SelectValue placeholder="Nenhuma (conta raiz)" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">— Nenhuma (conta raiz)</SelectItem>
-                    {contasPai.map((c) => (
-                      <SelectItem key={c.id} value={String(c.id)}>
-                        {c.codigo} — {c.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            />
+
+            {paiInicial && !conta ? (
+              <div className="flex items-center gap-2 rounded-md border px-3 py-2 bg-muted/50 text-sm text-muted-foreground">
+                <FolderOpen className="h-4 w-4 shrink-0" />
+                <span>{paiInicial.codigo} — {paiInicial.nome}</span>
+              </div>
+            ) : (
+              <Controller
+                name="paiId"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    onValueChange={(v) => field.onChange(v === "none" ? null : Number(v))}
+                    value={field.value != null ? String(field.value) : "none"}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Nenhuma (conta raiz)" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">— Nenhuma (conta raiz)</SelectItem>
+                      {contasPai.map((c) => (
+                        <SelectItem key={c.id} value={String(c.id)}>
+                          {c.codigo} — {c.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            )}
           </div>
 
           <SheetFooter className="pt-2">

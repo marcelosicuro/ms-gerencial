@@ -3,131 +3,80 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { PlanoContasForm } from "./form";
-import { AcoesConta } from "./acoes";
-import type { Conta, ContaComNivel } from "./types";
-import { TipoConta, NaturezaConta } from "@prisma/client";
-import { cn } from "@/lib/utils";
+import { TreeNode } from "./tree-node";
+import type { Conta, ContaNode } from "./types";
 
-const naturezaVariant: Record<NaturezaConta, "default" | "secondary" | "outline" | "destructive"> = {
-  ATIVO:              "default",
-  PASSIVO:            "secondary",
-  PATRIMONIO_LIQUIDO: "outline",
-  RECEITA:            "default",
-  CUSTO:              "destructive",
-  DESPESA:            "destructive",
-};
-
-const naturezaLabel: Record<NaturezaConta, string> = {
-  ATIVO:              "Ativo",
-  PASSIVO:            "Passivo",
-  PATRIMONIO_LIQUIDO: "PL",
-  RECEITA:            "Receita",
-  CUSTO:              "Custo",
-  DESPESA:            "Despesa",
-};
-
-export function PlanoContasClient({ contas }: { contas: ContaComNivel[] }) {
-  const [open, setOpen] = useState(false);
-  const [editando, setEditando] = useState<Conta | null>(null);
-
-  function abrirNova() {
-    setEditando(null);
-    setOpen(true);
+function coletarSinteticas(nos: ContaNode[]): { id: number; codigo: string; nome: string }[] {
+  const result: { id: number; codigo: string; nome: string }[] = [];
+  function percorrer(lista: ContaNode[]) {
+    for (const n of lista) {
+      if (n.tipo === "SINTETICA") result.push({ id: n.id, codigo: n.codigo, nome: n.nome });
+      percorrer(n.filhos);
+    }
   }
+  percorrer(nos);
+  return result;
+}
 
-  function abrirEditar(c: Conta) {
-    setEditando(c);
-    setOpen(true);
-  }
+type Estado =
+  | { modo: "fechado" }
+  | { modo: "nova-raiz" }
+  | { modo: "nova-filha"; pai: Conta }
+  | { modo: "editar"; conta: Conta };
 
-  const contasPai = contas
-    .filter((c) => c.tipo === TipoConta.SINTETICA && c.ativo)
-    .map((c) => ({ id: c.id, codigo: c.codigo, nome: c.nome }));
+export function PlanoContasClient({ tree, total }: { tree: ContaNode[]; total: number }) {
+  const [estado, setEstado] = useState<Estado>({ modo: "fechado" });
+
+  const contasPai = coletarSinteticas(tree);
+
+  const open = estado.modo !== "fechado";
+  const conta = estado.modo === "editar" ? estado.conta : null;
+  const paiInicial = estado.modo === "nova-filha" ? estado.pai : null;
+
+  function fechar() { setEstado({ modo: "fechado" }); }
 
   return (
     <>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Plano de Contas</h1>
-          <p className="text-muted-foreground text-sm">{contas.length} contas cadastradas</p>
+          <p className="text-muted-foreground text-sm">{total} contas cadastradas</p>
         </div>
-        <Button onClick={abrirNova}>
+        <Button onClick={() => setEstado({ modo: "nova-raiz" })}>
           <Plus className="h-4 w-4 mr-2" />
-          Nova conta
+          Nova conta raiz
         </Button>
       </div>
 
-      <div className="rounded-lg border bg-background overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-muted/50">
-              <th className="text-left px-4 py-3 font-medium w-32">Código</th>
-              <th className="text-left px-4 py-3 font-medium">Nome</th>
-              <th className="text-left px-4 py-3 font-medium w-32">Tipo</th>
-              <th className="text-left px-4 py-3 font-medium w-28">Natureza</th>
-              <th className="text-left px-4 py-3 font-medium w-20">Status</th>
-              <th className="px-4 py-3 w-20" />
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {contas.length === 0 && (
-              <tr>
-                <td colSpan={6} className="text-center text-muted-foreground py-12">
-                  Nenhuma conta cadastrada.{" "}
-                  <button className="underline text-primary" onClick={abrirNova}>
-                    Criar a primeira conta
-                  </button>
-                </td>
-              </tr>
-            )}
-            {contas.map((c) => (
-              <tr
-                key={c.id}
-                className={cn("hover:bg-muted/30 transition-colors", !c.ativo && "opacity-50")}
-              >
-                <td className="px-4 py-2.5 font-mono text-sm">{c.codigo}</td>
-                <td className="px-4 py-2.5">
-                  <span
-                    style={{ paddingLeft: `${c.nivel * 20}px` }}
-                    className={cn(
-                      "flex items-center gap-1.5",
-                      c.tipo === TipoConta.SINTETICA && "font-semibold"
-                    )}
-                  >
-                    {c.nivel > 0 && <span className="text-muted-foreground text-xs">↳</span>}
-                    {c.nome}
-                  </span>
-                </td>
-                <td className="px-4 py-2.5">
-                  <Badge variant="outline" className="text-xs">
-                    {c.tipo === TipoConta.SINTETICA ? "Sintética" : "Analítica"}
-                  </Badge>
-                </td>
-                <td className="px-4 py-2.5">
-                  <Badge variant={naturezaVariant[c.natureza]} className="text-xs">
-                    {naturezaLabel[c.natureza]}
-                  </Badge>
-                </td>
-                <td className="px-4 py-2.5">
-                  <span className={cn("text-xs font-medium", c.ativo ? "text-green-600" : "text-muted-foreground")}>
-                    {c.ativo ? "Ativa" : "Inativa"}
-                  </span>
-                </td>
-                <td className="px-4 py-2.5 text-right">
-                  <AcoesConta conta={c} onEditar={abrirEditar} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="rounded-lg border bg-background p-2">
+        {tree.length === 0 ? (
+          <p className="text-center text-muted-foreground py-12 text-sm">
+            Nenhuma conta cadastrada.{" "}
+            <button
+              className="underline text-primary"
+              onClick={() => setEstado({ modo: "nova-raiz" })}
+            >
+              Criar a primeira conta
+            </button>
+          </p>
+        ) : (
+          tree.map((node) => (
+            <TreeNode
+              key={node.id}
+              node={node}
+              onEditar={(c) => setEstado({ modo: "editar", conta: c })}
+              onAdicionarFilha={(pai) => setEstado({ modo: "nova-filha", pai })}
+            />
+          ))
+        )}
       </div>
 
       <PlanoContasForm
         open={open}
-        onOpenChange={setOpen}
-        conta={editando}
+        onOpenChange={(v) => { if (!v) fechar(); }}
+        conta={conta}
+        paiInicial={paiInicial}
         contasPai={contasPai}
       />
     </>

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { PlanoContasClient } from "./client";
+import type { ContaNode } from "./types";
 
 type ContaRaw = {
   id: number;
@@ -11,40 +12,29 @@ type ContaRaw = {
   ativo: boolean;
 };
 
-// Ordena hierarquicamente: pai antes dos filhos, mantendo ordem por código dentro de cada nível
-function ordenarHierarquicamente(contas: ContaRaw[]) {
-  const por_id = new Map(contas.map((c) => [c.id, c]));
-  const resultado: (ContaRaw & { nivel: number })[] = [];
-  const visitados = new Set<number>();
+function buildTree(contas: ContaRaw[]): ContaNode[] {
+  const map = new Map<number, ContaNode>();
+  for (const c of contas) map.set(c.id, { ...c, filhos: [] });
 
-  function visitar(id: number, nivel: number) {
-    if (visitados.has(id)) return;
-    visitados.add(id);
-    const c = por_id.get(id);
-    if (!c) return;
-    resultado.push({ ...c, nivel });
-    filhosDe(c.id).forEach((f) => visitar(f.id, nivel + 1));
+  const roots: ContaNode[] = [];
+  for (const node of map.values()) {
+    if (node.paiId === null || !map.has(node.paiId)) {
+      roots.push(node);
+    } else {
+      map.get(node.paiId)!.filhos.push(node);
+    }
   }
 
-  function filhosDe(paiId: number) {
-    return contas
-      .filter((c) => c.paiId === paiId)
-      .sort((a, b) => a.codigo.localeCompare(b.codigo, undefined, { numeric: true }));
+  function sort(nodes: ContaNode[]) {
+    nodes.sort((a, b) => a.codigo.localeCompare(b.codigo, undefined, { numeric: true }));
+    nodes.forEach((n) => sort(n.filhos));
   }
+  sort(roots);
+  return roots;
+}
 
-  // raízes (sem pai), ordenadas por código
-  const raizes = contas
-    .filter((c) => c.paiId === null)
-    .sort((a, b) => a.codigo.localeCompare(b.codigo, undefined, { numeric: true }));
-
-  raizes.forEach((r) => visitar(r.id, 0));
-
-  // contas órfãs (referência a pai inexistente) ficam no final
-  contas
-    .filter((c) => !visitados.has(c.id))
-    .forEach((c) => resultado.push({ ...c, nivel: 0 }));
-
-  return resultado;
+function contarTotal(nos: ContaNode[]): number {
+  return nos.reduce((acc, n) => acc + 1 + contarTotal(n.filhos), 0);
 }
 
 export default async function PlanoContasPage() {
@@ -52,14 +42,15 @@ export default async function PlanoContasPage() {
   try {
     contas = await prisma.planoContas.findMany({ orderBy: { codigo: "asc" } });
   } catch {
-    // DB não configurado ainda — exibe lista vazia
+    // DB não configurado ainda
   }
 
-  const contasOrdenadas = ordenarHierarquicamente(contas);
+  const tree = buildTree(contas);
+  const total = contarTotal(tree);
 
   return (
     <div className="space-y-6">
-      <PlanoContasClient contas={contasOrdenadas} />
+      <PlanoContasClient tree={tree} total={total} />
     </div>
   );
 }
