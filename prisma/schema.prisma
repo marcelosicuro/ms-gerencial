@@ -1,0 +1,95 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Profile {
+  id           String   @id // mesmo UUID do Supabase Auth
+  email        String   @unique
+  nome         String?
+  avatar       String?
+  role         Role     @default(USER)
+  ativo        Boolean  @default(true)
+  criadoEm    DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt   @map("atualizado_em")
+
+  lancamentos  Lancamento[]
+  centrosCusto CentroCusto[]
+
+  @@map("profiles")
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+// ─── Contabilidade Gerencial ─────────────────────────────────────────────────
+
+model PlanoContas {
+  id       Int           @id @default(autoincrement())
+  codigo   String        @unique
+  nome     String
+  tipo     TipoConta
+  natureza NaturezaConta
+  pai      PlanoContas?  @relation("subcontas", fields: [paiId], references: [id])
+  paiId    Int?          @map("pai_id")
+  filhos   PlanoContas[] @relation("subcontas")
+  ativo    Boolean       @default(true)
+  criadoEm DateTime      @default(now()) @map("criado_em")
+
+  debitoLancamentos  Lancamento[] @relation("LancamentoDebito")
+  creditoLancamentos Lancamento[] @relation("LancamentoCredito")
+
+  @@map("plano_contas")
+}
+
+enum TipoConta {
+  SINTETICA
+  ANALITICA
+}
+
+enum NaturezaConta {
+  ATIVO
+  PASSIVO
+  PATRIMONIO_LIQUIDO
+  RECEITA
+  CUSTO
+  DESPESA
+}
+
+model CentroCusto {
+  id            Int      @id @default(autoincrement())
+  codigo        String   @unique
+  nome          String
+  ativo         Boolean  @default(true)
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  responsavel   Profile? @relation(fields: [responsavelId], references: [id])
+  responsavelId String?  @map("responsavel_id")
+
+  lancamentos Lancamento[]
+
+  @@map("centros_custo")
+}
+
+model Lancamento {
+  id            Int          @id @default(autoincrement())
+  data          DateTime     @db.Date
+  descricao     String
+  valor         Decimal      @db.Decimal(15, 2)
+  debito        PlanoContas  @relation("LancamentoDebito",  fields: [debitoId],  references: [id])
+  debitoId      Int          @map("debito_id")
+  credito       PlanoContas  @relation("LancamentoCredito", fields: [creditoId], references: [id])
+  creditoId     Int          @map("credito_id")
+  centroCusto   CentroCusto? @relation(fields: [centroCustoId], references: [id])
+  centroCustoId Int?         @map("centro_custo_id")
+  documento     String?
+  lancadoPor    Profile      @relation(fields: [lancadoPorId], references: [id])
+  lancadoPorId  String       @map("lancado_por_id")
+  criadoEm     DateTime     @default(now()) @map("criado_em")
+
+  @@map("lancamentos")
+}
